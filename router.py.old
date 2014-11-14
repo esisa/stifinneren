@@ -23,15 +23,6 @@ from fiona import collection
 # For multiprocess URLS
 import grequests
 
-# To process URLS i batch
-from itertools import islice, chain
-def batch(iterable, size):
-    sourceiter = iter(iterable)
-    while True:
-        batchiter = islice(sourceiter, size)
-        yield chain([batchiter.next()], batchiter)
-
-
 app = Flask(__name__)
 app.debug = True
 
@@ -44,41 +35,11 @@ pg_port = 5432
 
 routeDriving = "https://router.project-osrm.org/"
 routeSkiing = "http://178.62.235.179:8080/"
-routeKartverket =  "http://178.62.235.179:8081/"
 
 rasterPixelSize = 100
 checksum = ""
 checkSumHintStartCoordinate = ""
 
-urls = []
-
-routeType = "kartverket"
-
-skiingViaPointTables = [
-    'skiloype_lengde_centroid_5000',
-    'skiloype_lengde_centroid_4000',
-    'skiloype_lengde_centroid_3000',
-    'skiloype_lengde_centroid_2500',
-    'skiloype_lengde_centroid_2000',
-    'skiloype_lengde_centroid_1500',
-    'skiloype_lengde_centroid_1000',
-    'skiloype_lengde_centroid_500',
-    'skiloype_lengde_centroid_100',
-    'skiloype_lengde_centroid'
-]
-
-kartverketViaPointTables = [
-    'kartverket_n50_sti_centroid_5000',
-    'kartverket_n50_sti_centroid_4000',
-    'kartverket_n50_sti_centroid_3000',
-    'kartverket_n50_sti_centroid_2500',
-    'kartverket_n50_sti_centroid_2000',
-    'kartverket_n50_sti_centroid_1500',
-    'kartverket_n50_sti_centroid_1000',
-    'kartverket_n50_sti_centroid_500',
-    'kartverket_n50_sti_centroid_100',
-    'kartverket_n50_sti_centroid'
-]
 
 # Geometry transform function based on pyproj.transform
 project = partial(
@@ -87,10 +48,8 @@ project = partial(
     pyproj.Proj(init='EPSG:32633'))
     
 
-@app.route('/circularRoute/<float:lat>/<float:lon>', methods=['GET'])
+@app.route('/<float:lat>/<float:lon>', methods=['GET'])
 def hello(lat, lon):
-    global urls
-    urls = []
     #getRoutes(type, length, drivingLength, lat, lon)
     #getRoutes('walk', 15, 8, 59.7220, 10.048786)
     #getRoutes('walk', 10, 0, 59.7220, 10.048786) # MIF-hytta
@@ -101,19 +60,6 @@ def hello(lat, lon):
 
     return json.dumps(routes)
 
-@app.route('/circularRoute/<float:lat>/<float:lon>/<int:length>/', methods=['GET'])
-def getRoutes(lat, lon, length):
-    global urls
-    urls = []
-    #getRoutes(type, length, drivingLength, lat, lon)
-    #getRoutes('walk', 15, 8, 59.7220, 10.048786)
-    #getRoutes('walk', 10, 0, 59.7220, 10.048786) # MIF-hytta
-    #routes = getRoutes('walk', 5, 0, 59.81761, 10.02068) # Ulevann
-    routes = getRoutes('walk', length, 0, lat, lon) 
-    #getParkingLots(59.7220, 10.048786, 20)
-
-
-    return json.dumps(routes)
 
 @app.route("/route/family/walk")
 def route_family_walk():
@@ -189,7 +135,6 @@ def getDrivingDistanceInMinutes(fromLat, fromLon, toLat, toLon):
 
 
 def loopRoutes(lat, lon, length): 
-    global routeType
     routeArray = []
 
     # Reproject to UTM33
@@ -199,10 +144,10 @@ def loopRoutes(lat, lon, length):
 
     # Get bounds of image
     # TODO: Justere på 1.3 for å se om den kan være lavere og fortsatt få lange nok turer
-    maxX = x + length*1000*0.2;
-    maxY = y + length*1000*0.2;
-    minX = x - length*1000*0.2;
-    minY = y - length*1000*0.2;
+    maxX = x + length*1000*1.3;
+    maxY = y + length*1000*1.3;
+    minX = x - length*1000*1.3;
+    minY = y - length*1000*1.3;
 
     #print "Center lon lat: " , lon, lat
     #print "Center x    y: " , x, y
@@ -218,148 +163,119 @@ def loopRoutes(lat, lon, length):
     minX = str(minX)
     minY = str(minY)
 
-    if routeType == 'kartverket':
-        viaPointTables = kartverketViaPointTables
-    else:
-        viaPointTables = skiingViaPointTable
+    # Create random fileID
+    randomId = "".join(random.sample(string.letters+string.digits, 8))
 
-    for skiingViaPointTable in kartverketViaPointTables:
+    # Extract skiløyper to shape file
+    geom = "ST_GeomFromText('POLYGON(("+minX+" "+minY+", "+minX+" "+maxY+", "+maxX+" "+maxY+", "+maxX+" "+minY+", "+minX+" "+minY+"))')"
+    command = """ 
+    /Library/Frameworks/GDAL.framework/Versions/1.11/Programs/ogr2ogr -s_srs EPSG:900913 -t_srs EPSG:32633 -f "ESRI Shapefile" /tmp/stifinneren/ski_""" +str(randomId)+ """.shp PG:"host=localhost user=turkompisen dbname=turkompisen" -sql "SELECT way FROM skiloype_lengde_centroid_2000 where way && """ +geom+ """ "
+    """
+    os.system(command)
 
-        print "Beregningsnivå: " , skiingViaPointTable
+    command = "gdal_rasterize -tr "+str(rasterPixelSize)+" "+str(rasterPixelSize)+" -burn 255 /tmp/stifinneren/ski_"+str(randomId)+".shp /tmp/stifinneren/ski_"+str(randomId)+".tif"
+    os.system(command)
 
-        # Create random fileID
-        randomId = "".join(random.sample(string.letters+string.digits, 8))
+    dataset = rasterio.open('/tmp/stifinneren/ski_'+str(randomId)+'.tif')
+    imageYDim, imageXDim = dataset.shape
+    image = dataset.read()
 
-        # Extract skiløyper to shape file
-        geom = "ST_GeomFromText('POLYGON(("+minX+" "+minY+", "+minX+" "+maxY+", "+maxX+" "+maxY+", "+maxX+" "+minY+", "+minX+" "+minY+"))')"
-        command = """ 
-        /Library/Frameworks/GDAL.framework/Versions/1.11/Programs/ogr2ogr -s_srs EPSG:900913 -t_srs EPSG:32633 -f "ESRI Shapefile" /tmp/stifinneren/ski_""" +str(randomId)+ """.shp PG:"host=localhost user=turkompisen dbname=turkompisen" -sql "SELECT way FROM """+skiingViaPointTable+""" where way && """ +geom+ """ "
-        """
-        os.system(command)
+    # Få koordinat på første pixel
+    col, row = 0, 0
+    xStartImage, yStartImage = dataset.affine * (col, row)
 
-        command = "gdal_rasterize -tr "+str(rasterPixelSize)+" "+str(rasterPixelSize)+" -burn 255 /tmp/stifinneren/ski_"+str(randomId)+".shp /tmp/stifinneren/ski_"+str(randomId)+".tif"
-        os.system(command)
+    # Beregn antall piksler til startpunkt på ruta
+    centerPixelX = (int)(math.floor((x-xStartImage)/rasterPixelSize))
+    centerPixelY = (int)(math.floor((yStartImage-y)/rasterPixelSize))
 
-        numViaPoints = 0
-        try:
-            dataset = rasterio.open('/tmp/stifinneren/ski_'+str(randomId)+'.tif')
-            imageYDim, imageXDim = dataset.shape
-            image = dataset.read()
+    ## Regn tilbake for å sjekke at vi er på ca samme sted fortsatt
+    #xStartRoute, yStartRoute = dataset.affine * (centerPixelX, centerPixelY)
+    #print "X: " , x , xStartRoute
+    #print "Y: " , y , yStartRoute
 
-            for (v,w), value in numpy.ndenumerate(image[0]):
-                if image[0][v][w] == 255:
-                    numViaPoints = numViaPoints + 1
-            print "Antall viapunkter: " , numViaPoints
-        except IOError, e:
-            print e.errno
-            print e
-        
+    # boundingYPixel = yStartPunkt i piksler - (lengdeFraBruker * 0.6 * 1000/100)
+    # Ganger med 0.6 fordi vi trenger ikke å gå så langt ut som hele lengden. Må minium tilbake samme vei. 
+    # Ganger med 1000 for å få meter 
+    # Deler med 100 som er pixelstørrelsen i bildet. 
 
-        if numViaPoints > 15:
-            break
 
-    # If no viapoints is found then dataset will throw a NameError
-    try:
+    # Calculate pixel bounds
+    topMostYPixel = centerPixelY-(length*0.5*1000/rasterPixelSize) 
+    leftMostXPixel = centerPixelX-(length*0.5*1000/rasterPixelSize)
+    rightMostXPixel = centerPixelX+(length*0.5*1000/rasterPixelSize)
+    bottomMostYPixel = centerPixelY+(length*0.5*1000/rasterPixelSize)
     
-        # Få koordinat på første pixel
-        col, row = 0, 0
-        xStartImage, yStartImage = dataset.affine * (col, row)
+    # Make sure we do not go outside of image 
+    if topMostYPixel<0:
+        topMostYPixel=0
+    if leftMostXPixel<0:
+        leftMostXPixel=0
+    if rightMostXPixel>imageXDim:
+        rightMostXPixel=imageXDim
+    if bottomMostYPixel>imageYDim:
+        bottomMostYPixel=imageYDim
 
-        # Beregn antall piksler til startpunkt på ruta
-        centerPixelX = (int)(math.floor((x-xStartImage)/rasterPixelSize))
-        centerPixelY = (int)(math.floor((yStartImage-y)/rasterPixelSize))
+    # Get top left corner of image
+    imageTopLeft = image[0][topMostYPixel:centerPixelY, leftMostXPixel:centerPixelX]
+    i = 0
+    for (y,x), value in numpy.ndenumerate(imageTopLeft):
+        if imageTopLeft[y][x] == 255:
+            i = i + 1
+    print "imageTopLeft: " , i
+    #print imageTopLeft 
+    col, row = leftMostXPixel, topMostYPixel
+    xStartImage, yStartImage = dataset.affine * (col, row)
+    #print "Top left coordinate: ", xStartImage, yStartImage
 
-        ## Regn tilbake for å sjekke at vi er på ca samme sted fortsatt
-        #xStartRoute, yStartRoute = dataset.affine * (centerPixelX, centerPixelY)
-        #print "X: " , x , xStartRoute
-        #print "Y: " , y , yStartRoute
+    # Get top right corner of image
+    imageTopRight = image[0][topMostYPixel:centerPixelY, centerPixelX:rightMostXPixel]
+    i = 0
+    for (y,x), value in numpy.ndenumerate(imageTopRight):
+        if imageTopRight[y][x] == 255:
+            i = i + 1
+    print "\nimageTopRight: ", i
+    #print imageTopRight
 
-        # boundingYPixel = yStartPunkt i piksler - (lengdeFraBruker * 0.6 * 1000/100)
-        # Ganger med 0.6 fordi vi trenger ikke å gå så langt ut som hele lengden. Må minium tilbake samme vei. 
-        # Ganger med 1000 for å få meter 
-        # Deler med 100 som er pixelstørrelsen i bildet. 
+    # Get bottom left corner of image
+    imageBottomLeft = image[0][centerPixelY:bottomMostYPixel, leftMostXPixel:centerPixelX]
+    i = 0
+    for (y,x), value in numpy.ndenumerate(imageBottomLeft):
+        if imageBottomLeft[y][x] == 255:
+            i = i + 1
+    print "\nimageBottomLeft: " , i
+    #print imageBottomLeft
 
+    # Get bottom right corner of image
+    imageBottomRight = image[0][centerPixelY:bottomMostYPixel, centerPixelX:rightMostXPixel]
+    i = 0
+    for (y,x), value in numpy.ndenumerate(imageBottomRight):
+        if imageBottomRight[y][x] == 255:
+            i = i + 1
+    print "\nimageBottomRight: " , i
+    #print imageBottomRight
 
-        # Calculate pixel bounds
-        topMostYPixel = centerPixelY-(length*0.99*1000/rasterPixelSize) 
-        leftMostXPixel = centerPixelX-(length*0.99*1000/rasterPixelSize)
-        rightMostXPixel = centerPixelX+(length*0.99*1000/rasterPixelSize)
-        bottomMostYPixel = centerPixelY+(length*0.99*1000/rasterPixelSize)
-        
-        # Make sure we do not go outside of image 
-        if topMostYPixel<0:
-            topMostYPixel=0
-        if leftMostXPixel<0:
-            leftMostXPixel=0
-        if rightMostXPixel>imageXDim:
-            rightMostXPixel=imageXDim
-        if bottomMostYPixel>imageYDim:
-            bottomMostYPixel=imageYDim
-
-        # Get top left corner of image
-        imageTopLeft = image[0][topMostYPixel:centerPixelY, leftMostXPixel:centerPixelX]
-        i = 0
-        for (y,x), value in numpy.ndenumerate(imageTopLeft):
-            if imageTopLeft[y][x] == 255:
-                i = i + 1
-        print "imageTopLeft: " , i
-        #print imageTopLeft 
-        col, row = leftMostXPixel, topMostYPixel
-        xStartImage, yStartImage = dataset.affine * (col, row)
-        #print "Top left coordinate: ", xStartImage, yStartImage
-
-        # Get top right corner of image
-        imageTopRight = image[0][topMostYPixel:centerPixelY, centerPixelX:rightMostXPixel]
-        i = 0
-        for (y,x), value in numpy.ndenumerate(imageTopRight):
-            if imageTopRight[y][x] == 255:
-                i = i + 1
-        print "\nimageTopRight: ", i
-        #print imageTopRight
-
-        # Get bottom left corner of image
-        imageBottomLeft = image[0][centerPixelY:bottomMostYPixel, leftMostXPixel:centerPixelX]
-        i = 0
-        for (y,x), value in numpy.ndenumerate(imageBottomLeft):
-            if imageBottomLeft[y][x] == 255:
-                i = i + 1
-        print "\nimageBottomLeft: " , i
-        #print imageBottomLeft
-
-        # Get bottom right corner of image
-        imageBottomRight = image[0][centerPixelY:bottomMostYPixel, centerPixelX:rightMostXPixel]
-        i = 0
-        for (y,x), value in numpy.ndenumerate(imageBottomRight):
-            if imageBottomRight[y][x] == 255:
-                i = i + 1
-        print "\nimageBottomRight: " , i
-        #print imageBottomRight
-
-        # Do it for all quadrants
-        routeArray.extend(getPossibleRoute(lat, lon, dataset, imageTopLeft, leftMostXPixel, topMostYPixel, imageTopRight, centerPixelX, topMostYPixel))
-        routeArray.extend(getPossibleRoute(lat, lon, dataset, imageTopLeft, leftMostXPixel, topMostYPixel, imageBottomLeft, leftMostXPixel, centerPixelY))
-        routeArray.extend(getPossibleRoute(lat, lon, dataset, imageBottomLeft, leftMostXPixel, centerPixelY, imageBottomRight, centerPixelX, centerPixelY))
-        routeArray.extend(getPossibleRoute(lat, lon, dataset, imageBottomRight, centerPixelX, centerPixelY, imageTopRight, centerPixelX, topMostYPixel))
-        
-        routeArray.extend(getPossibleRoute(lat, lon, dataset, imageTopLeft, leftMostXPixel, topMostYPixel, imageTopLeft, leftMostXPixel, topMostYPixel))
-        routeArray.extend(getPossibleRoute(lat, lon, dataset, imageBottomLeft, leftMostXPixel, centerPixelY, imageBottomLeft, leftMostXPixel, centerPixelY))
-        routeArray.extend(getPossibleRoute(lat, lon, dataset, imageBottomRight, centerPixelX, centerPixelY, imageBottomRight, centerPixelX, centerPixelY))
-        routeArray.extend(getPossibleRoute(lat, lon, dataset, imageTopRight, centerPixelX, topMostYPixel, imageTopRight, centerPixelX, topMostYPixel, True))
-        
-        #print len(routeArray)
-        #print "Dataset shape: " , image[0].shape
-        #writeOutPoints(routeArray)
-        return routeArray
-    except NameError:
-      return routeArray
+    # Do it for all quadrants
+    routeArray.extend(getPossibleRoute(lat, lon, dataset, imageTopLeft, leftMostXPixel, topMostYPixel, imageTopRight, centerPixelX, topMostYPixel))
+    routeArray.extend(getPossibleRoute(lat, lon, dataset, imageTopLeft, leftMostXPixel, topMostYPixel, imageBottomLeft, leftMostXPixel, centerPixelY))
+    routeArray.extend(getPossibleRoute(lat, lon, dataset, imageBottomLeft, leftMostXPixel, centerPixelY, imageBottomRight, centerPixelX, centerPixelY))
+    routeArray.extend(getPossibleRoute(lat, lon, dataset, imageBottomRight, centerPixelX, centerPixelY, imageTopRight, centerPixelX, topMostYPixel))
     
+    routeArray.extend(getPossibleRoute(lat, lon, dataset, imageTopLeft, leftMostXPixel, topMostYPixel, imageTopLeft, leftMostXPixel, topMostYPixel))
+    routeArray.extend(getPossibleRoute(lat, lon, dataset, imageBottomLeft, leftMostXPixel, centerPixelY, imageBottomLeft, leftMostXPixel, centerPixelY))
+    routeArray.extend(getPossibleRoute(lat, lon, dataset, imageBottomRight, centerPixelX, centerPixelY, imageBottomRight, centerPixelX, centerPixelY))
+    routeArray.extend(getPossibleRoute(lat, lon, dataset, imageTopRight, centerPixelX, topMostYPixel, imageTopRight, centerPixelX, topMostYPixel))
+    
+    #print len(routeArray)
+    #print "Dataset shape: " , image[0].shape
+    #writeOutPoints(routeArray)
+    return routeArray
 
-def getPossibleRoute(lat, lon, dataset, arrayOne, xdiffOne, ydiffOne, arrayTwo, xdiffTwo, ydiffTwo, lastCalc=False):
+def getPossibleRoute(lat, lon, dataset, arrayOne, xdiffOne, ydiffOne, arrayTwo, xdiffTwo, ydiffTwo):
     global checksum
     global checkSumHintStartCoordinate
     checkSumHintViaPoint1 = ""
-    global urls
-    global routeType
+    urls = []
+
 
     routeArray = []
 
@@ -390,7 +306,7 @@ def getPossibleRoute(lat, lon, dataset, arrayOne, xdiffOne, ydiffOne, arrayTwo, 
 
     #arrayOneContinueValue = 3
     #arrayTwoContinueValue = 3
-    #print "Size: " , arrayOneContinueValue, arrayTwoContinueValue
+    print "Size: " , arrayOneContinueValue, arrayTwoContinueValue
 
     for (arrayOneY,arrayOneX), value in numpy.ndenumerate(arrayOne):
         arrayTwoSkip = 0
@@ -442,94 +358,71 @@ def getPossibleRoute(lat, lon, dataset, arrayOne, xdiffOne, ydiffOne, arrayTwo, 
                             else:
                                 url = 'viaroute?output=json&loc='+str(lat)+','+str(lon)+'&loc='+str(markerLeftYCoordinate)+','+str(markerLeftXCoordinate)+'&loc='+str(markerRightYCoordinate)+','+str(markerRightXCoordinate)+'&loc='+str(lat)+','+str(lon)+'&instructions=true'
                             
-                            if routeType == 'kartverket':
-                                urls.append(routeKartverket + url)
-                            else:
-                                urls.append(routeSkiing + url)
+                            urls.append(url)
                             
-                            #print routeSkiing + url
+                            print "Beregner rute..."
+                            print routeSkiing + url
+                            r = requests.get(routeSkiing + url)
+                            if r.json()['status'] == 0:
+                                instructions = r.json()['route_instructions']
+                                geometry = r.json()['route_geometry']
+                                checksum = r.json()['hint_data']['checksum']
+                                checkSumHintStartCoordinate = r.json()['hint_data']['locations'][0]
+                                checkSumHintViaPoint1 = r.json()['hint_data']['locations'][1]
 
-    if lastCalc:
-        for batchiter in batch(urls, 100):
-            batchURL = []
-            print "Batch: ",
-            for item in batchiter:
-                batchURL.append(item)
+                                
+                                
+                                # Get total distance of non ski track segment
+                                nonSkiTrackLength = 0
+                                for segment in instructions:
+                                    featureType = segment[1]
+                                    if featureType != "skiing":
+                                        nonSkiTrackLength = nonSkiTrackLength + segment[2]
 
-            """if len(urls) < 250:
-                rs = (grequests.get(u) for u in urls)
-                print "Antall beregninger i batch: ", len(urls)
-                results = grequests.map(rs)
-            else:
-                rs = (grequests.get(u) for u in urls[0:250])
-                print "Antall beregninger i batch: ", len(urls)
-                results = grequests.map(rs)
-            """
-            rs = (grequests.get(u) for u in batchURL)
-            print "Antall beregninger i batch: ", len(batchURL)
-            results = grequests.map(rs)
-
-            for r in results:
-                
-                if r.json()['status'] == 0:
-                    instructions = r.json()['route_instructions']
-                    geometry = r.json()['route_geometry']
-                    checksum = r.json()['hint_data']['checksum']
-                    checkSumHintStartCoordinate = r.json()['hint_data']['locations'][0]
-                    checkSumHintViaPoint1 = r.json()['hint_data']['locations'][1]
-                    startPointLat = r.json()['via_points'][0][0]
-                    startPointLon = r.json()['via_points'][0][1]
-                    viaPoint1Lat = r.json()['via_points'][1][0]
-                    viaPoint1Lon = r.json()['via_points'][1][1]
-                    viaPoint2Lat = r.json()['via_points'][2][0]
-                    viaPoint2Lon = r.json()['via_points'][2][1]
-
-                    
-                    
-                    # Get total distance of non ski track segment
-                    nonSkiTrackLength = 0
-                    for segment in instructions:
-                        featureType = segment[1]
-                        if featureType != "skiing":
-                            nonSkiTrackLength = nonSkiTrackLength + segment[2]
-
-                    
+                                
 
 
-                    # # Sjekk at alle viapunkter er på skiløyper. Hvis ikke vil vi sannsynligvis
-                    # # ikke ha med turen. 
+                                # # Sjekk at alle viapunkter er på skiløyper. Hvis ikke vil vi sannsynligvis
+                                # # ikke ha med turen. 
 
-                    # Only append route if there is not to many non ski track segments on route. 
-                    routeSummary = r.json()['route_summary']
-                    #print "Total distance: ", routeSummary['total_distance']
-                    #print "Non skiing distance: " , nonSkiTrackLength
-                    #print "Divided: ", float(nonSkiTrackLength) / float(routeSummary['total_distance'])
-                    if float(nonSkiTrackLength) / float(routeSummary['total_distance']) < 1:
-                        # Convert to coordinate tuples
-                        coordinates = decode(geometry)
-                        
-                        # Convert to line
-                        line = LineString(coordinates)
-                        utm33Line = transform(project, line)
-                        b = utm33Line.bounds
+                                # Only append route if there is not to many non ski track segments on route. 
+                                routeSummary = r.json()['route_summary']
+                                #print "Total distance: ", routeSummary['total_distance']
+                                #print "Non skiing distance: " , nonSkiTrackLength
+                                #print "Divided: ", float(nonSkiTrackLength) / float(routeSummary['total_distance'])
+                                if float(nonSkiTrackLength) / float(routeSummary['total_distance']) < 11:
+                                    # Convert to coordinate tuples
+                                    coordinates = decode(geometry)
+                                    
+                                    # Convert to line
+                                    line = LineString(coordinates)
+                                    utm33Line = transform(project, line)
+                                    b = utm33Line.bounds
 
-                        # Calculate area per line. 
-                        # The larger area the more circular a route is
-                        utm33LineBuffered = utm33Line.buffer(10)
-                        routeArea = utm33LineBuffered.area
-                        routeLength = utm33Line.length
-                        routeAreaPerLength = routeArea/routeLength
+                                    # Calculate area per line. 
+                                    # The larger area the more circular a route is
+                                    utm33LineBuffered = utm33Line.buffer(10)
+                                    routeArea = utm33LineBuffered.area
+                                    routeLength = utm33Line.length
+                                    routeAreaPerLength = routeArea/routeLength
 
-                        # Convert line bbox to polygon
-                        polygon = Polygon([ (b[0], b[1]) , (b[0], b[3]), (b[2], b[3]), (b[2], b[1]) ])
+                                    # Convert line bbox to polygon
+                                    polygon = Polygon([ (b[0], b[1]) , (b[0], b[3]), (b[2], b[3]), (b[2], b[1]) ])
 
-                        routeArray.append({"nonSki": str(float(nonSkiTrackLength) / float(routeSummary['total_distance'])) , "distance": utm33Line.length, "bboxArea": polygon.area, "lineArea": routeArea , "lineAreaPerLength": routeAreaPerLength ,  "startPoint": [startPointLat,startPointLon],"endPoint": [startPointLat,startPointLon],"viaPoint1": [viaPoint1Lat,viaPoint1Lon],"viaPoint2": [viaPoint2Lat,viaPoint2Lon]})
-                    #else:
-                    #    #print "TAR IKKE MED!"
-                else:
-                    print "Rute feila!"
+                                    routeArray.append({"nonSki": str(float(nonSkiTrackLength) / float(routeSummary['total_distance'])) , "distance": utm33Line.length, "bboxArea": polygon.area, "lineArea": routeArea , "lineAreaPerLength": routeAreaPerLength ,  "startPoint": [lat,lon],"endPoint": [lat,lon],"viaPoint1": [markerLeftYCoordinate,markerLeftXCoordinate],"viaPoint2": [markerRightYCoordinate,markerRightXCoordinate]})
+                                #else:
+                                #    #print "TAR IKKE MED!"
 
     return routeArray
+
+
+def calculateRoute(startLat, startLon, markerLeftLat, markerLeftLon, markerRightLat, markerRightLon):
+
+    url = 'viaroute?output=json&loc='+str(startLat)+','+str(startLon)+'&loc='+str(markerLeftLat)+','+str(markerLeftLon)+'&loc='+str(markerRightLat)+','+str(markerRightLon)+'&loc='+str(startLat)+','+str(startLon)+'&instructions=true'
+    print routeSkiing + url
+    r = requests.get(routeSkiing + url)
+    
+    return r
 
 
 def orderRouteAlternatives(routeAlternativesArray, length):
