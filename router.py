@@ -43,8 +43,8 @@ pg_port = 5432
 
 
 routeDriving = "https://router.project-osrm.org/"
-routeSkiing = "http://178.62.235.179:8080/"
-routeKartverket =  "http://178.62.235.179:8081/"
+routeSkiing = "http://backend.turkompisen.no/route/no/osm/ski/"
+routeKartverket =  "http://backend.turkompisen.no/route/no/kartverket/tur/"
 
 rasterPixelSize = 100
 checksum = ""
@@ -227,6 +227,10 @@ def loopRoutes(lat, lon, length):
 
         print "Beregningsnivå: " , skiingViaPointTable
 
+        # Create folder if does not exist
+        if not os.path.exists("/tmp/stifinneren"):
+            os.makedirs("/tmp/stifinneren")
+
         # Create random fileID
         randomId = "".join(random.sample(string.letters+string.digits, 8))
 
@@ -235,6 +239,7 @@ def loopRoutes(lat, lon, length):
         command = """ 
         /Library/Frameworks/GDAL.framework/Versions/1.11/Programs/ogr2ogr -s_srs EPSG:900913 -t_srs EPSG:32633 -f "ESRI Shapefile" /tmp/stifinneren/ski_""" +str(randomId)+ """.shp PG:"host=localhost user=turkompisen dbname=turkompisen" -sql "SELECT way FROM """+skiingViaPointTable+""" where way && """ +geom+ """ "
         """
+        print command
         os.system(command)
 
         command = "gdal_rasterize -tr "+str(rasterPixelSize)+" "+str(rasterPixelSize)+" -burn 255 /tmp/stifinneren/ski_"+str(randomId)+".shp /tmp/stifinneren/ski_"+str(randomId)+".tif"
@@ -447,7 +452,7 @@ def getPossibleRoute(lat, lon, dataset, arrayOne, xdiffOne, ydiffOne, arrayTwo, 
                             else:
                                 urls.append(routeSkiing + url)
                             
-                            #print routeSkiing + url
+                            #print routeKartverket + url
 
     if lastCalc:
         for batchiter in batch(urls, 100):
