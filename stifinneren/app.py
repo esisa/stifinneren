@@ -33,7 +33,7 @@ def batch(iterable, size):
 
 
 app = Flask(__name__)
-app.debug = True
+app.debug = False
 
 # Postgres login credentials
 pg_db = "turkompisen"
@@ -736,8 +736,8 @@ def decode(point_str):
     
     return points   
 
-if __name__ == "__main__":
-    app.run()
+#if __name__ == "__main__":
+#    app.run()
 
 
 
