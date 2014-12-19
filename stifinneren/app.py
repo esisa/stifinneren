@@ -41,10 +41,14 @@ pg_host = "localhost"
 pg_user = "turkompisen"
 pg_port = 5432
 
+backendBaseURL = "http://backend.turkompisen.no"
+
 
 routeDriving = "https://router.project-osrm.org/"
-routeSkiing = "http://backend.turkompisen.no/route/no/osm/ski/"
-routeKartverket =  "http://backend.turkompisen.no/route/no/kartverket/tur/"
+routeOSMSki = "http://backend.turkompisen.no/route/no/osm/ski/"
+routeKartverketHike =  "http://backend.turkompisen.no/route/no/kartverket/tur/"
+routeOSMHike = "http://backend.turkompisen.no/route/no/osm/tur/"
+routeKartverketSki =  "http://backend.turkompisen.no/route/no/kartverket/ski/"
 
 rasterPixelSize = 100
 checksum = ""
@@ -86,6 +90,67 @@ project = partial(
     pyproj.Proj(init='EPSG:4326'),
     pyproj.Proj(init='EPSG:32633'))
     
+@app.route("/route/kartverket/hike/<float:startLat>/<float:startLon>/<float:endLat>/<float:endLon>")
+def route_kartverket_walk(startLat, startLon, endLat, endLon):
+    result = calcSimpleRoute(routeKartverketHike, startLat, startLon, endLat, endLon)
+    return json.dumps(result)
+
+@app.route("/route/kartverket/ski/<float:startLat>/<float:startLon>/<float:endLat>/<float:endLon>")
+def route_kartverket_ski(startLat, startLon, endLat, endLon):
+    result = calcSimpleRoute(routeKartverketSki, startLat, startLon, endLat, endLon)
+    return json.dumps(result)
+
+@app.route("/route/osm/hike/<float:startLat>/<float:startLon>/<float:endLat>/<float:endLon>")
+def route_osm_walk(startLat, startLon, endLat, endLon):
+    result = calcSimpleRoute(routeOSMHike, startLat, startLon, endLat, endLon)
+    return json.dumps(result)
+
+@app.route("/route/osm/ski/<float:startLat>/<float:startLon>/<float:endLat>/<float:endLon>")
+def route_osm_ski(startLat, startLon, endLat, endLon):
+    result = calcSimpleRoute(routeOSMSki, startLat, startLon, endLat, endLon)
+    return json.dumps(result)
+
+
+def calcSimpleRoute(baseURL, startLat, startLon, endLat, endLon):
+
+    routeTypes = { "barn":      {"hike": 2, "ski": 4, "bicycle": 7}, 
+                   "mosjonist": {"hike": 3, "ski": 7, "bicycle": 10}, 
+                   "barnevogn": {"hike": 2, "ski": 4, "bicycle": 7}, 
+                   "blodsprek": {"hike": 4, "ski": 10, "bicycle": 15} 
+                  }
+    
+    # Make request
+    url = baseURL + 'viaroute?z=22&alt=false&output=json&loc='+str(startLat)+','+str(startLon)+'&loc='+str(endLat)+','+str(endLon)
+    r = requests.get(url)
+    result = r.json()
+
+    # Get place names
+    fromPlaceName = getPlaceForPoint(startLat, startLon)
+    toPlaceName = getPlaceForPoint(endLat, endLon)
+    result['route_summary']['fromPlaceName'] = fromPlaceName
+    result['route_summary']['toPlaceName'] = toPlaceName
+    
+    # Parse geom
+    coordinates = decode(result['route_geometry'])
+    line = LineString(coordinates)
+
+    # Get bounding box
+    minLon, minLat, maxLon, maxLat = line.bounds
+    result['route_summary']['boundingBox'] = { "minLat": minLat,
+                                               "minLon": minLon,
+                                               "maxLat": maxLat,
+                                               "maxLon": maxLon  
+                                              }
+
+    # Get time spent route
+
+    # Get elevation data
+    result['elevGeom'] = getElevationProfile(line)
+
+    # Get height meters up and down
+
+    return result
+
 
 @app.route('/circularRoute/<float:lat>/<float:lon>', methods=['GET'])
 def hello(lat, lon):
@@ -115,17 +180,40 @@ def getRoutes(lat, lon, length):
 
     return json.dumps(routes)
 
-@app.route("/route/family/walk")
-def route_family_walk():
-	return "route_family_walk"
+def getPlaceForPoint(lat, lon):
 
-@app.route("/route/family/bike")
-def route_family_bike():
-	return "route_family_bike"
+    accectedPlaces = ['kafe', 'Betjent', 'Ubetjent', 'Selvbetjent', 'Koie']
 
-@app.route("/route/family/ski")
-def route_family_ski():
-	return "route_family_ski"
+    # Make request
+    url = backendBaseURL + '/turkompisenSearch/feature/' + str(lat) + '/' + str(lon) + '/20'
+    r = requests.get(url)
+    result = r.json()
+
+    # Default name
+    name = None
+
+    hits = result['hits']['hits']
+    for hit in hits:
+        if hit['_source']['type'] in accectedPlaces:
+            name = hit['_source']['name']
+            
+
+    if name == None:
+        url = backendBaseURL + '/turkompisenSearch/reverse/' + str(lat) + '/' + str(lon)
+        r = requests.get(url)
+        result = r.json()
+        hits = result['hits']['hits']
+        for hit in hits:
+            name = hit['_source']['name']
+            break # Only take first result
+
+    if name == None:
+        name = "Ukjent"
+
+    return name
+
+def getElevationProfile(routeGeom):
+    return ""
 
 
 def writeOutPoints(pointArray):
@@ -448,11 +536,11 @@ def getPossibleRoute(lat, lon, dataset, arrayOne, xdiffOne, ydiffOne, arrayTwo, 
                                 url = 'viaroute?output=json&loc='+str(lat)+','+str(lon)+'&loc='+str(markerLeftYCoordinate)+','+str(markerLeftXCoordinate)+'&loc='+str(markerRightYCoordinate)+','+str(markerRightXCoordinate)+'&loc='+str(lat)+','+str(lon)+'&instructions=true'
                             
                             if routeType == 'kartverket':
-                                urls.append(routeKartverket + url)
+                                urls.append(routeKartverketHike + url)
                             else:
-                                urls.append(routeSkiing + url)
+                                urls.append(routeOSMSki + url)
                             
-                            #print routeKartverket + url
+                            #print routeKartverketHike + url
 
     if lastCalc:
         for batchiter in batch(urls, 100):
