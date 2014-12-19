@@ -127,8 +127,8 @@ def calcSimpleRoute(baseURL, startLat, startLon, endLat, endLon):
     # Get place names
     fromPlaceName = getPlaceForPoint(startLat, startLon)
     toPlaceName = getPlaceForPoint(endLat, endLon)
-    result['route_summary']['fromPlaceName'] = fromPlaceName
-    result['route_summary']['toPlaceName'] = toPlaceName
+    result['route_summary']['from_place_name'] = fromPlaceName
+    result['route_summary']['to_place_name'] = toPlaceName
     
     # Parse geom
     coordinates = decode(result['route_geometry'])
@@ -143,9 +143,12 @@ def calcSimpleRoute(baseURL, startLat, startLon, endLat, endLon):
                                               }
 
     # Get time spent route
+    hours = math.floor((result['route_summary']['total_distance']/1000)/routeTypes['mosjonist']['hike'])
+    min = 22
+    result['route_summary']['time'] = {"hours": hours, "min": min}
 
     # Get elevation data
-    result['elevGeom'] = getElevationProfile(line)
+    result['elev_geometry'] = getElevationProfile(line)
 
     # Get height meters up and down
 
