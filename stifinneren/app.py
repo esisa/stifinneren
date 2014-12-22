@@ -15,7 +15,7 @@ import math
 import os
 import json
 import random,string
-
+from geojson import LineString as geoJsonLineString
 
 # For testing only
 from fiona import collection
@@ -113,7 +113,7 @@ def route_osm_ski(startLat, startLon, endLat, endLon):
 
 def calcSimpleRoute(baseURL, startLat, startLon, endLat, endLon):
 
-    routeTypes = { "barn":      {"hike": 2, "ski": 4, "bicycle": 7}, 
+    routeSpeeds = { "barn":      {"hike": 2, "ski": 4, "bicycle": 7}, 
                    "mosjonist": {"hike": 3, "ski": 7, "bicycle": 10}, 
                    "barnevogn": {"hike": 2, "ski": 4, "bicycle": 7}, 
                    "blodsprek": {"hike": 4, "ski": 10, "bicycle": 15} 
@@ -127,8 +127,8 @@ def calcSimpleRoute(baseURL, startLat, startLon, endLat, endLon):
     # Get place names
     fromPlaceName = getPlaceForPoint(startLat, startLon)
     toPlaceName = getPlaceForPoint(endLat, endLon)
-    result['route_summary']['from_place_name'] = fromPlaceName
-    result['route_summary']['to_place_name'] = toPlaceName
+    #result['route_summary']['from_place_name'] = fromPlaceName
+    #result['route_summary']['to_place_name'] = toPlaceName
     
     # Parse geom
     coordinates = decode(result['route_geometry'])
@@ -141,10 +141,10 @@ def calcSimpleRoute(baseURL, startLat, startLon, endLat, endLon):
                                                "maxLat": maxLat,
                                                "maxLon": maxLon  
                                               }
-
+    
     # Get time spent route
-    hours = math.floor((result['route_summary']['total_distance']/1000)/routeTypes['mosjonist']['hike'])
-    min = 22
+    hours = math.floor((result['route_summary']['total_distance']/1000)/routeSpeeds['mosjonist']['hike'])
+    min = 22 # ta rest av ovenfor og gang opp med 60 for å få min
     result['route_summary']['time'] = {"hours": hours, "min": min}
 
     # Get elevation data
@@ -215,8 +215,18 @@ def getPlaceForPoint(lat, lon):
 
     return name
 
-def getElevationProfile(routeGeom):
-    return ""
+def getElevationProfile(line):
+
+    # Convert to geojson
+    geojson = geoJsonLineString(list(line.coords))
+
+    # Make request
+    url = 'http://verktoy.kresendo.no/elevProfile/elevationprofile.json'
+    headers = {'content-type': 'application/json'}
+    r = requests.post(url, data=json.dumps(geojson), headers=headers)
+    result = r.json()
+
+    return result
 
 
 def writeOutPoints(pointArray):
