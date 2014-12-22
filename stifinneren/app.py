@@ -226,7 +226,12 @@ def getElevationProfile(line):
     r = requests.post(url, data=json.dumps(geojson), headers=headers)
     result = r.json()
 
-    return result
+    points = []
+    for point in result['features']:
+        points.append(point['properties'])
+
+
+    return points
 
 
 def writeOutPoints(pointArray):
