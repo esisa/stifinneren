@@ -127,8 +127,8 @@ def calcSimpleRoute(baseURL, startLat, startLon, endLat, endLon):
     # Get place names
     fromPlaceName = getPlaceForPoint(startLat, startLon)
     toPlaceName = getPlaceForPoint(endLat, endLon)
-    #result['route_summary']['from_place_name'] = fromPlaceName
-    #result['route_summary']['to_place_name'] = toPlaceName
+    result['route_summary']['from_place_name'] = fromPlaceName
+    result['route_summary']['to_place_name'] = toPlaceName
     
     # Parse geom
     coordinates = decode(result['route_geometry'])
