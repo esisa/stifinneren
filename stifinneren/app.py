@@ -41,6 +41,8 @@ pg_host = "localhost"
 pg_user = "turkompisen"
 pg_port = 5432
 
+ogrInstance = "/Library/Frameworks/GDAL.framework/Versions/1.11/Programs/ogr2ogr"
+
 backendBaseURL = "http://backend.turkompisen.no"
 
 
@@ -181,7 +183,34 @@ def getRoutes(lat, lon, length):
     #getParkingLots(59.7220, 10.048786, 20)
 
 
+    # Get geometry of route
+    for route in routes:
+        route['route_geometry'] = getGeometryForRoute(route)
+
+
     return json.dumps(routes)
+
+def getGeometryForRoute(route):
+
+    fromLat = route['startPoint'][0]
+    fromLon = route['startPoint'][1]
+    viaOneLat = route['viaPoint1'][0]
+    viaOneLon = route['viaPoint1'][1]
+    viaTwoLat = route['viaPoint2'][0]
+    viaTwoLon = route['viaPoint2'][1]
+    toLat = route['endPoint'][0]
+    toLon = route['endPoint'][1]
+
+    url = routeKartverketHike + 'viaroute?z=14&output=json&loc='+str(fromLat)+','+str(fromLon)+'&loc='+str(viaOneLat)+','+str(viaOneLon)+'&loc='+str(viaTwoLat)+','+str(viaTwoLon)+'&loc='+str(toLat)+','+str(toLon)+'&instructions=false'
+    r = requests.get(url)
+    
+    geometry = r.json()['route_geometry']   
+
+    # Decode and encode again to get correct digits
+    coordinates = decode(geometry)
+    geometry = encode_coords(coordinates)
+
+    return geometry
 
 def getPlaceForPoint(lat, lon):
 
@@ -342,8 +371,7 @@ def loopRoutes(lat, lon, length):
 
         # Extract skiløyper to shape file
         geom = "ST_GeomFromText('POLYGON(("+minX+" "+minY+", "+minX+" "+maxY+", "+maxX+" "+maxY+", "+maxX+" "+minY+", "+minX+" "+minY+"))')"
-        command = """ 
-        /Library/Frameworks/GDAL.framework/Versions/1.11/Programs/ogr2ogr -s_srs EPSG:900913 -t_srs EPSG:32633 -f "ESRI Shapefile" /tmp/stifinneren/ski_""" +str(randomId)+ """.shp PG:"host=localhost user=turkompisen dbname=turkompisen" -sql "SELECT way FROM """+skiingViaPointTable+""" where way && """ +geom+ """ "
+        command = ogrInstance + """ -s_srs EPSG:900913 -t_srs EPSG:32633 -f "ESRI Shapefile" /tmp/stifinneren/ski_""" +str(randomId)+ """.shp PG:"host=localhost user=turkompisen dbname=turkompisen" -sql "SELECT way FROM """+skiingViaPointTable+""" where way && """ +geom+ """ "
         """
         print command
         os.system(command)
