@@ -371,7 +371,7 @@ def loopRoutes(lat, lon, length):
 
         # Extract skiløyper to shape file
         geom = "ST_GeomFromText('POLYGON(("+minX+" "+minY+", "+minX+" "+maxY+", "+maxX+" "+maxY+", "+maxX+" "+minY+", "+minX+" "+minY+"))')"
-        command = ogrInstance + """ -s_srs EPSG:900913 -t_srs EPSG:32633 -f "ESRI Shapefile" /tmp/stifinneren/ski_""" +str(randomId)+ """.shp PG:"host=localhost user=turkompisen dbname=turkompisen" -sql "SELECT way FROM """+skiingViaPointTable+""" where way && """ +geom+ """ "
+        command = ogrInstance + """ -s_srs EPSG:3857 -t_srs EPSG:32633 -f "ESRI Shapefile" /tmp/stifinneren/ski_""" +str(randomId)+ """.shp PG:"host=localhost user=turkompisen dbname=turkompisen" -sql "SELECT way FROM """+skiingViaPointTable+""" where way && """ +geom+ """ "
         """
         print command
         os.system(command)
