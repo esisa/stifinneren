@@ -146,7 +146,7 @@ def calcSimpleRoute(baseURL, startLat, startLon, endLat, endLon):
     
     # Get time spent route
     hours = math.floor((result['route_summary']['total_distance']/1000)/routeSpeeds['mosjonist']['hike'])
-    min = math.floor((((result['route_summary']['total_distance']/1000)/routeSpeeds['mosjonist']['hike'])-hours)*60) # ta rest av ovenfor og gang opp med 60 for å få min
+    min = math.floor(((((float)(result['route_summary']['total_distance'])/1000)/routeSpeeds['mosjonist']['hike'])-hours)*60) # ta rest av ovenfor og gang opp med 60 for å få min
     result['route_summary']['time'] = {"hours": hours, "min": min}
 
     # Get elevation data
@@ -203,7 +203,7 @@ def getRoutes(lat, lon, length):
 
         # Get time spent route
         hours = math.floor((route['distance']/1000)/routeSpeeds['mosjonist']['hike'])
-        min = math.floor((((route['distance']/1000)/routeSpeeds['mosjonist']['hike'])-hours)*60) # ta rest av ovenfor og gang opp med 60 for å få min
+        min = math.floor(((((float)(route['distance'])/1000)/routeSpeeds['mosjonist']['hike'])-hours)*60) # ta rest av ovenfor og gang opp med 60 for å få min
         route['time'] = {"hours": hours, "min": min}
 
         # Parse geom
