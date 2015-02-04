@@ -146,7 +146,7 @@ def calcSimpleRoute(baseURL, startLat, startLon, endLat, endLon):
     
     # Get time spent route
     hours = math.floor((result['route_summary']['total_distance']/1000)/routeSpeeds['mosjonist']['hike'])
-    min = 22 # ta rest av ovenfor og gang opp med 60 for å få min
+    min = math.floor((((result['route_summary']['total_distance']/1000)/routeSpeeds['mosjonist']['hike'])-hours)*60) # ta rest av ovenfor og gang opp med 60 for å få min
     result['route_summary']['time'] = {"hours": hours, "min": min}
 
     # Get elevation data
@@ -175,6 +175,13 @@ def hello(lat, lon):
 def getRoutes(lat, lon, length):
     global urls
     urls = []
+
+    routeSpeeds = { "barn":      {"hike": 2, "ski": 4, "bicycle": 7}, 
+                   "mosjonist": {"hike": 3, "ski": 7, "bicycle": 10}, 
+                   "barnevogn": {"hike": 2, "ski": 4, "bicycle": 7}, 
+                   "blodsprek": {"hike": 4, "ski": 10, "bicycle": 15} 
+                  }
+
     #getRoutes(type, length, drivingLength, lat, lon)
     #getRoutes('walk', 15, 8, 59.7220, 10.048786)
     #getRoutes('walk', 10, 0, 59.7220, 10.048786) # MIF-hytta
@@ -193,6 +200,11 @@ def getRoutes(lat, lon, length):
 
         # Add name
         route['from_place_name'] = fromPlaceName
+
+        # Get time spent route
+        hours = math.floor((route['distance']/1000)/routeSpeeds['mosjonist']['hike'])
+        min = math.floor((((route['distance']/1000)/routeSpeeds['mosjonist']['hike'])-hours)*60) # ta rest av ovenfor og gang opp med 60 for å få min
+        route['time'] = {"hours": hours, "min": min}
 
         # Parse geom
         coordinates = decode(route_geometry, False)
