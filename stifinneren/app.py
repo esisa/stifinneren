@@ -182,11 +182,25 @@ def getRoutes(lat, lon, length):
     routes = getRoutes('walk', length, 0, lat, lon) 
     #getParkingLots(59.7220, 10.048786, 20)
 
+    # Get place names
+    fromPlaceName = getPlaceForPoint(lat, lon)
+
 
     # Get geometry of route
     for route in routes:
-        route['route_geometry'] = getGeometryForRoute(route)
+        route_geometry = getGeometryForRoute(route)
+        route['route_geometry'] = route_geometry
 
+        # Add name
+        route['from_place_name'] = fromPlaceName
+
+        # Parse geom
+        coordinates = decode(route_geometry, False)
+        line = LineString(coordinates)
+
+        # Get elevation data
+        elevationProfile = getElevationProfile(line)
+        route['elev_geometry'] = elevationProfile
 
     return json.dumps(routes)
 
@@ -805,7 +819,7 @@ def _encode_value(value):
     # Step 9-10
     return (chr(chunk + 63) for chunk in chunks)
  
-def decode(point_str):
+def decode(point_str, divideByTen=True):
     '''Decodes a polyline that has been encoded using Google's algorithm
     http://code.google.com/apis/maps/documentation/polylinealgorithm.html
     
@@ -866,7 +880,10 @@ def decode(point_str):
         prev_y += coords[i]
         # a round to 6 digits ensures that the floats are the same as when 
         # they were encoded
-        points.append((round(prev_x, 6)/10, round(prev_y, 6)/10))
+        if divideByTen:
+            points.append((round(prev_x, 6)/10, round(prev_y, 6)/10))
+        else:
+            points.append((round(prev_x, 6), round(prev_y, 6)))
     
     return points   
 
