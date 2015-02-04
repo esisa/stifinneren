@@ -5,5 +5,5 @@ print os.path.dirname(__file__) + "/stifinneren"
 import logging
 logging.basicConfig()
 
-from stifinnern.app import app as application
+from stifinneren.app import app as application
 
