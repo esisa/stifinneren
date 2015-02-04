@@ -198,6 +198,14 @@ def getRoutes(lat, lon, length):
         coordinates = decode(route_geometry, False)
         line = LineString(coordinates)
 
+         # Get bounding box
+        minLon, minLat, maxLon, maxLat = line.bounds
+        route['boundingBox'] = { "minLat": minLat,
+                                   "minLon": minLon,
+                                   "maxLat": maxLat,
+                                   "maxLon": maxLon  
+                                  }
+
         # Get elevation data
         elevationProfile = getElevationProfile(line)
         route['elev_geometry'] = elevationProfile
