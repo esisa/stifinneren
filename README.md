@@ -2,6 +2,10 @@ stifinneren
 ===========
 
 
+apt-get install python-shapely python-flask
+pip install geojson requests grequests
+
+
 
 Starte script:
 nohup ./osrm-routed -c kartverket_tur.ini > /var/log/stifinneren/kartverket_tur.log &
